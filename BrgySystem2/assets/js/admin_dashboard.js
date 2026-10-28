@@ -1,14 +1,33 @@
+const totalIncidents =
+    document.getElementById("totalIncidents");
 
-const totalElement = document.getElementById("sumTotal");
-const pendingElement = document.getElementById("sumPending");
-const ongoingElement = document.getElementById("sumOngoing");
-const resolvedElement = document.getElementById("sumResolved");
-const recentBody = document.getElementById("recentBody");
+const pendingIncidents =
+    document.getElementById("pendingIncidents");
 
-let dashboardIncidents = [];
+const ongoingIncidents =
+    document.getElementById("ongoingIncidents");
+
+const resolvedIncidents =
+    document.getElementById("resolvedIncidents");
+
+const pendingEditRequests =
+    document.getElementById("pendingEditRequests");
+
+const recentIncidentsBody =
+    document.getElementById("recentIncidentsBody");
+
+const logoutButton =
+    document.getElementById("logoutButton");
+
+let incidents = [];
+
 
 function escapeHTML(value) {
-    if (value === null || value === undefined) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
         return "";
     }
 
@@ -20,144 +39,241 @@ function escapeHTML(value) {
         .replace(/'/g, "&#039;");
 }
 
+
 function formatDate(value) {
-    if (!value) return "-";
 
-    const date = new Date(String(value).replace(" ", "T"));
-
-    if (Number.isNaN(date.getTime())) {
-        return String(value);
+    if (!value) {
+        return "-";
     }
 
-    return date.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric"
-    });
+    const date = new Date(
+        String(value).replace(" ", "T")
+    );
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleDateString(
+        "en-PH",
+        {
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+        }
+    );
 }
 
+
 function statusBadge(status) {
-    const normalized = String(status || "").trim().toLowerCase();
+
+    const normalized =
+        String(status || "")
+            .trim()
+            .toLowerCase();
 
     let className = "status-default";
 
     if (normalized === "pending") {
         className = "status-pending";
-    } else if (normalized === "ongoing") {
+    } else if (
+        normalized === "ongoing" ||
+        normalized === "preparing"
+    ) {
         className = "status-ongoing";
-    } else if (normalized === "resolved") {
+    } else if (
+        normalized === "resolved" ||
+        normalized === "completed"
+    ) {
         className = "status-resolved";
     }
 
-    return `<span class="status-badge ${className}">
-        ${escapeHTML(status || "-")}
-    </span>`;
+    return `
+        <span class="status-badge ${className}">
+            ${escapeHTML(status || "-")}
+        </span>
+    `;
 }
 
-async function loadDashboardIncidents() {
-    if (!recentBody) return;
+
+
+async function loadIncidents() {
 
     try {
-        // Use the incidents API configured by the main system.
-        const apiUrl = window.CAPTAIN_INCIDENTS_API || "api/incidents.php";
 
-        const response = await fetch(apiUrl, {
-            method: "GET",
-            credentials: "same-origin",
-            cache: "no-store",
-            headers: {
-                "Accept": "application/json"
+        const response = await fetch(
+            window.CAPTAIN_INCIDENTS_API,
+            {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store"
             }
-        });
+        );
+
+        if (response.status === 401) {
+            window.location.href = "../login.html";
+            return;
+        }
 
         if (!response.ok) {
-            throw new Error(`Unable to load incidents (HTTP ${response.status}).`);
+            throw new Error("Failed to load incidents.");
         }
 
         const result = await response.json();
 
-        if (!Array.isArray(result)) {
-            throw new Error("The incidents API did not return a JSON array.");
-        }
+        incidents = Array.isArray(result)
+            ? result.filter(function(incident) {
+                return Number(incident.captain_archived) !== 1 &&
+                       incident.captain_archived !== true;
+            })
+            : [];
 
-        dashboardIncidents = result.filter(function(incident) {
-            return Number(incident.captain_archived) !== 1 &&
-                   incident.captain_archived !== true;
-        });
-
-        updateDashboardSummary();
+        updateSummary();
         displayRecentIncidents();
 
     } catch (error) {
-        console.error("Dashboard loading error:", error);
 
-        recentBody.innerHTML = `
+        console.error(
+            "Incident loading error:",
+            error
+        );
+
+        recentIncidentsBody.innerHTML = `
             <tr>
-                <td colspan="5" class="error-cell">
-                    Unable to load incident records. Check the browser console
-                    and incidents API response.
+                <td colspan="6" class="error-cell">
+                    Unable to load incident records.
                 </td>
             </tr>
         `;
     }
 }
 
-function updateDashboardSummary() {
-    const total = dashboardIncidents.length;
+function updateSummary() {
 
-    const pending = dashboardIncidents.filter(function(incident) {
-        return String(incident.status || "").trim().toLowerCase() === "pending";
+    const total = incidents.length;
+
+    const pending = incidents.filter(function(incident) {
+        return String(incident.status || "").toLowerCase() === "pending";
     }).length;
 
-    const ongoing = dashboardIncidents.filter(function(incident) {
-        return String(incident.status || "").trim().toLowerCase() === "ongoing";
+    const ongoing = incidents.filter(function(incident) {
+        return String(incident.status || "").toLowerCase() === "ongoing";
     }).length;
 
-    const resolved = dashboardIncidents.filter(function(incident) {
-        return String(incident.status || "").trim().toLowerCase() === "resolved";
+    const resolved = incidents.filter(function(incident) {
+        return String(incident.status || "").toLowerCase() === "resolved";
     }).length;
 
-    if (totalElement) totalElement.textContent = total;
-    if (pendingElement) pendingElement.textContent = pending;
-    if (ongoingElement) ongoingElement.textContent = ongoing;
-    if (resolvedElement) resolvedElement.textContent = resolved;
+    totalIncidents.textContent = total;
+    pendingIncidents.textContent = pending;
+    ongoingIncidents.textContent = ongoing;
+    resolvedIncidents.textContent = resolved;
 }
 
-function displayRecentIncidents() {
-    if (!recentBody) return;
 
-    if (dashboardIncidents.length === 0) {
-        recentBody.innerHTML = `
+function displayRecentIncidents() {
+
+    if (incidents.length === 0) {
+
+        recentIncidentsBody.innerHTML = `
             <tr>
-                <td colspan="5" class="empty-cell">
+                <td colspan="6" class="empty-cell">
                     No incident records found.
                 </td>
             </tr>
         `;
+
         return;
     }
 
-    // Show the five most recently added records.
-    const recent = [...dashboardIncidents]
-        .sort(function(a, b) {
-            const dateA = new Date(a.created_at || a.date || 0).getTime();
-            const dateB = new Date(b.created_at || b.date || 0).getTime();
+    const recent = incidents.slice(0, 5);
 
-            return dateB - dateA;
-        })
-        .slice(0, 5);
+    recentIncidentsBody.innerHTML = recent.map(function(incident) {
 
-    recentBody.innerHTML = recent.map(function(incident) {
         return `
             <tr>
-                <td><strong>${escapeHTML(incident.id ?? "-")}</strong></td>
+                <td>
+                    <strong>${escapeHTML(incident.id || "-")}</strong>
+                </td>
+
                 <td>${escapeHTML(formatDate(incident.date))}</td>
                 <td>${escapeHTML(incident.type || "-")}</td>
                 <td>${escapeHTML(incident.complainant || "-")}</td>
+                <td>${escapeHTML(incident.location || "-")}</td>
                 <td>${statusBadge(incident.status)}</td>
             </tr>
         `;
+
     }).join("");
 }
 
-loadDashboardIncidents();
+
+async function loadPendingEditRequests() {
+
+    try {
+
+        const response = await fetch(
+            window.CAPTAIN_EDIT_REQUESTS_API,
+            {
+                method: "GET",
+                credentials: "same-origin",
+                cache: "no-store"
+            }
+        );
+
+        if (response.status === 401) {
+            window.location.href = "../login.html";
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error("Failed to load edit requests.");
+        }
+
+        const result = await response.json();
+
+        const requests = Array.isArray(result.requests)
+            ? result.requests
+            : [];
+
+        const pending = requests.filter(function(request) {
+            return request.status === "Pending";
+        }).length;
+
+        pendingEditRequests.textContent = pending;
+
+    } catch (error) {
+
+        console.error(
+            "Edit request loading error:",
+            error
+        );
+
+        pendingEditRequests.textContent = "0";
+    }
+}
+
+
+logoutButton.addEventListener("click", async function() {
+
+    try {
+
+        await fetch(
+            "../api/logout.php",
+            {
+                method: "POST",
+                credentials: "same-origin"
+            }
+        );
+
+    } catch (error) {
+
+        console.error("Logout error:", error);
+    }
+
+    window.location.href = "../login.html";
+});
+
+
+loadIncidents();
+loadPendingEditRequests();
